@@ -18,7 +18,7 @@ variable "server_type" {
 
 variable "image" {
   description = "Name or ID of the image the server is created from"
-  default     = "ubuntu-20.04"
+  default     = "ubuntu-24.04"
 }
 
 variable "client_count" {
@@ -41,7 +41,7 @@ variable "vpn_ipv6_cidr" {
 
 variable "use_ipv6_endpoint" {
   description = "Use IPv6 endpoint in client config, otherwise use IPv4"
-  default     = true
+  default     = false
 }
 
 variable "interface" {
