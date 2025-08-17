@@ -1,5 +1,3 @@
-# main.tf
-# SSH Key Generation
 resource "tls_private_key" "ssh" {
   algorithm = "ED25519"
 }
@@ -9,14 +7,12 @@ resource "hcloud_ssh_key" "vpn" {
   public_key = tls_private_key.ssh.public_key_openssh
 }
 
-# WireGuard Key Generation
 resource "wireguard_asymmetric_key" "server" {}
 
 resource "wireguard_asymmetric_key" "clients" {
   count = var.client_count
 }
 
-# Create firewall
 resource "hcloud_firewall" "vpn" {
   name = "wireguard-vpn"
   rule {

@@ -1,4 +1,3 @@
-# cloud-init.yaml.tpl
 #cloud-config
 package_update: true
 package_upgrade: false

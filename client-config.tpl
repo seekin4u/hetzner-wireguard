@@ -1,4 +1,3 @@
-# client-config.tpl
 [Interface]
 PrivateKey = ${client_private_key}
 Address = ${client_ipv4_address},${client_ipv6_address}
