@@ -1,4 +1,3 @@
-# variables.tf
 variable "hcloud_token" {
   description = "Hetzner Cloud token"
   type        = string

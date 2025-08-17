@@ -16,30 +16,6 @@ resource "wireguard_asymmetric_key" "clients" {
   count = var.client_count
 }
 
-# Calculate IP addresses for server and clients
-locals {
-  server_ipv4_address = cidrhost(var.vpn_ipv4_cidr, 1)
-  server_ipv6_address = cidrhost(var.vpn_ipv6_cidr, 1)
-
-  client_configs = [
-    for idx in range(var.client_count) : {
-      ipv4_address = cidrhost(var.vpn_ipv4_cidr, idx + 2)
-      ipv6_address = cidrhost(var.vpn_ipv6_cidr, idx + 2)
-      private_key  = wireguard_asymmetric_key.clients[idx].private_key
-      public_key   = wireguard_asymmetric_key.clients[idx].public_key
-    }
-  ]
-
-  # Indent string to keep cloud-init.yaml well formatted after interpolation
-  peer_configs = indent(6, join("\n", [
-    for client in local.client_configs : <<-EOT
-    [Peer]
-    PublicKey = ${client.public_key}
-    AllowedIPs = ${client.ipv4_address}/32,${client.ipv6_address}/128
-    EOT
-  ]))
-}
-
 # Create firewall
 resource "hcloud_firewall" "vpn" {
   name = "wireguard-vpn"
@@ -80,7 +56,6 @@ data "template_file" "cloud_init" {
   }
 }
 
-# Create server
 resource "hcloud_server" "wireguard" {
   name        = "wireguard-vpn"
   server_type = var.server_type
@@ -95,8 +70,6 @@ resource "hcloud_server" "wireguard" {
   user_data = data.template_file.cloud_init.rendered
 }
 
-
-# outputs.tf
 # Creates ready to use local files for client configurations.
 # Generate QR code on Linux:
 # cat clientN.conf | qrencode -t ansiutf8
@@ -115,76 +88,3 @@ resource "local_file" "client_configs" {
 
   filename = "client${count.index + 1}.conf"
 }
-
-# Get ssh private key `terraform output -raw ssh_private_key > wireguard-ssh-key`
-# chmod 400 wireguard-ssh-key
-# ssh -i wireguard-ssh-key root@<ip-address>
-output "ssh_private_key" {
-  value     = tls_private_key.ssh.private_key_openssh
-  sensitive = true
-}
-
-output "server_public_ipv4" {
-  value = hcloud_server.wireguard.ipv4_address
-}
-
-output "server_public_ipv6" {
-  value = hcloud_server.wireguard.ipv6_address
-}
-
-
-
-# cloud-init.yaml.tpl
-#cloud-config
-package_update: true
-package_upgrade: false
-
-packages:
-  - wireguard
-  - ufw
-
-write_files:
-  - path: /etc/wireguard/wg0.conf
-    content: |
-      [Interface]
-      Address = ${server_ipv4_address},${server_ipv6_address}
-      PrivateKey = ${server_private_key}
-      ListenPort = 51820
-
-      PostUp = ufw route allow in on wg0 out on ${interface}
-      PostUp = iptables -A FORWARD -i wg0 -j ACCEPT
-      PostUp = iptables -t nat -A POSTROUTING -o ${interface} -j MASQUERADE
-      PostUp = ip6tables -A FORWARD -i wg0 -j ACCEPT
-      PostUp = ip6tables -t nat -A POSTROUTING -o ${interface} -j MASQUERADE
-      PostDown = ufw route delete allow in on wg0 out on ${interface}
-      PostDown = iptables -D FORWARD -i wg0 -j ACCEPT
-      PostDown = iptables -t nat -D POSTROUTING -o ${interface} -j MASQUERADE
-      PostDown = ip6tables -D FORWARD -i wg0 -j ACCEPT
-      PostDown = ip6tables -t nat -D POSTROUTING -o ${interface} -j MASQUERADE
-
-      ${peer_configs}
-    owner: root:root
-    permissions: '0600'
-
-runcmd:
-  - ufw allow 51820/udp
-  - ufw allow OpenSSH
-  - echo "y" | ufw enable
-  - echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-  - echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
-  - sysctl -p
-  - systemctl enable wg-quick@wg0
-  - systemctl start wg-quick@wg0
-
-
-# client-config.tpl
-[Interface]
-PrivateKey = ${client_private_key}
-Address = ${client_ipv4_address},${client_ipv6_address}
-DNS = 1.1.1.1, 2606:4700:4700::1111
-
-[Peer]
-PublicKey = ${server_public_key}
-AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = ${server_public_ip}:51820
-PersistentKeepalive = 25
